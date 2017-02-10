@@ -92,19 +92,12 @@ void ppm::read(const std::string &fname) {
 		b.reserve(size);
 
 		char aux;
-		int c;
 		for (unsigned int i = 0; i < size; ++i) {
 			inp.read(&aux, 1);
-			/*inp >> c;
-			aux = (char)c;*/
 			r.push_back( (unsigned char) aux);
 			inp.read(&aux, 1);
-			/*inp >> c;
-			aux = (char)c;*/
 			g.push_back((unsigned char)aux);
 			inp.read(&aux, 1);
-			/*inp >> c;
-			aux = (char)c;*/
 			b.push_back((unsigned char)aux);
 		}
 	} else {

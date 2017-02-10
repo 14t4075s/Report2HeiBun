@@ -3,12 +3,17 @@
 #include <vector>
 #include <thread>
 #include <ctime>
+#include <boost/asio.hpp>
 #include "ppm.h"
 
+
+void processThread();
+void processNet();
 
 //Split "mem" into "parts", e.g. if mem = 10 and parts = 4 you will have: 0,2,4,6,10
 //if possible the function will split mem into equal chuncks, if not
 //the last chunck will be slightly larger
+
 
 std::vector<int> bounds(int parts, int mem) {
 	std::vector<int>bnd;
@@ -205,8 +210,30 @@ void tst(ppm &image, ppm &image2, int left, int right) {
 }
 
 int main() {
+	int prog(0);
+	std::cout << "Enter Program type:		0:Thread		1:TCP " << std::endl;
+	std::cin >> prog;
+	switch (prog)
+	{
+	case 0:
+		processThread();
+		break;
+	case 1:
+
+		break;
+	default:
+		break;
+	}
+
+	std::cin.get();
+
+	return 0;
+}
+
+void processThread()
+{
 	std::string fname = std::string("fhd2.ppm");
-	char a;
+
 	ppm image(fname);
 	ppm image2(image.width, image.height);
 
@@ -241,7 +268,4 @@ int main() {
 
 
 	//Save the result
-	std::cin >> a;
-
-	return 0;
 }
