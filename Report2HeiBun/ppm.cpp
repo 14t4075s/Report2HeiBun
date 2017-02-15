@@ -23,9 +23,9 @@ ppm::ppm() {
 
 //create a PPM object and fill it with data stored in fname
 
-ppm::ppm(const std::string &fname) {
+ppm::ppm(const std::string &fname, bool file) {
 	init();
-	read(fname);
+	read(fname, file);
 }
 
 //create an "epmty" PPM image with a given width and height;the R,G,B arrays are filled with zeros
@@ -51,9 +51,69 @@ ppm::ppm(const unsigned int _width, const unsigned int _height) {
 
 //read the PPM image from fname
 
-void ppm::read(const std::string &fname) {
-	std::ifstream inp(fname.c_str(), std::ios::in | std::ios::binary);
-	if (inp.is_open()) {
+void ppm::read(const std::string &fname, bool file) {
+	if (file)
+	{
+		std::ifstream inp(fname.c_str(), std::ios::in | std::ios::binary);
+		if (inp.is_open()) {
+			std::string line;
+			std::getline(inp, line);
+			if (line != "P6") {
+				std::cout << "Error. Unrecognized file format." << std::endl;
+				return;
+			}
+			std::getline(inp, line);
+			while (line[0] == '#') {
+				std::getline(inp, line);
+			}
+			std::stringstream dimensions(line);
+
+			try {
+				dimensions >> width;
+				dimensions >> height;
+				nr_lines = height;
+				nr_columns = width;
+			}
+			catch (std::exception &e) {
+				std::cout << "Header file format error. " << e.what() << std::endl;
+				return;
+			}
+
+			std::getline(inp, line);
+			std::stringstream max_val(line);
+			try {
+				max_val >> max_col_val;
+			}
+			catch (std::exception &e) {
+				std::cout << "Header file format error. " << e.what() << std::endl;
+				return;
+			}
+
+			size = width*height;
+
+			r.reserve(size);
+			g.reserve(size);
+			b.reserve(size);
+
+			char aux;
+			for (unsigned int i = 0; i < size; ++i) {
+				inp.read(&aux, 1);
+				r.push_back((unsigned char)aux);
+				inp.read(&aux, 1);
+				g.push_back((unsigned char)aux);
+				inp.read(&aux, 1);
+				b.push_back((unsigned char)aux);
+			}
+		}
+		else {
+			std::cout << "Error. Unable to open " << fname << std::endl;
+		}
+		inp.close();
+	}
+	else
+	{
+		std::stringstream inp;
+		inp.str(fname);
 		std::string line;
 		std::getline(inp, line);
 		if (line != "P6") {
@@ -71,7 +131,8 @@ void ppm::read(const std::string &fname) {
 			dimensions >> height;
 			nr_lines = height;
 			nr_columns = width;
-		} catch (std::exception &e) {
+		}
+		catch (std::exception &e) {
 			std::cout << "Header file format error. " << e.what() << std::endl;
 			return;
 		}
@@ -80,7 +141,8 @@ void ppm::read(const std::string &fname) {
 		std::stringstream max_val(line);
 		try {
 			max_val >> max_col_val;
-		} catch (std::exception &e) {
+		}
+		catch (std::exception &e) {
 			std::cout << "Header file format error. " << e.what() << std::endl;
 			return;
 		}
@@ -94,16 +156,13 @@ void ppm::read(const std::string &fname) {
 		char aux;
 		for (unsigned int i = 0; i < size; ++i) {
 			inp.read(&aux, 1);
-			r.push_back( (unsigned char) aux);
+			r.push_back((unsigned char)aux);
 			inp.read(&aux, 1);
 			g.push_back((unsigned char)aux);
 			inp.read(&aux, 1);
 			b.push_back((unsigned char)aux);
 		}
-	} else {
-		std::cout << "Error. Unable to open " << fname << std::endl;
 	}
-	inp.close();
 }
 
 //write the PPM image in fname
@@ -131,4 +190,25 @@ void ppm::write(const std::string &fname) {
 		std::cout << "Error. Unable to open " << fname << std::endl;
 	}
 	inp.close();
+}
+
+void ppm::getString(std::string & data)
+{
+	std::stringstream ss;
+	ss << "P6\n";
+	ss << width;
+	ss << " ";
+	ss << height << "\n";
+	ss << max_col_val << "\n";
+
+	char aux;
+	for (unsigned int i = 0; i < size; ++i) {
+		aux = (char)r[i];
+		ss.write(&aux, 1);
+		aux = (char)g[i];
+		ss.write(&aux, 1);
+		aux = (char)b[i];
+		ss.write(&aux, 1);
+	}
+	data = ss.str();
 }
