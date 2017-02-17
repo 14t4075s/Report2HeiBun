@@ -67,7 +67,6 @@ void ppm::read(const std::string &fname, bool file) {
 				std::getline(inp, line);
 			}
 			std::stringstream dimensions(line);
-
 			try {
 				dimensions >> width;
 				dimensions >> height;
@@ -192,14 +191,14 @@ void ppm::write(const std::string &fname) {
 	inp.close();
 }
 
-void ppm::getString(std::string & data)
+std::string ppm::getString()
 {
 	std::stringstream ss;
-	ss << "P6\n";
+	/*ss << "P6\n";
 	ss << width;
 	ss << " ";
 	ss << height << "\n";
-	ss << max_col_val << "\n";
+	ss << max_col_val << "\n";*/
 
 	char aux;
 	for (unsigned int i = 0; i < size; ++i) {
@@ -210,5 +209,5 @@ void ppm::getString(std::string & data)
 		aux = (char)b[i];
 		ss.write(&aux, 1);
 	}
-	data = ss.str();
+	return ss.str();
 }

@@ -28,5 +28,5 @@ public:
 	//write the PPM image in fname
 	void write(const std::string &fname);
 	//get the data
-	void getString(std::string& data);
+	std::string getString();
 };

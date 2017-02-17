@@ -1,21 +1,23 @@
 #include <iostream>
+#include <ostream>
 #include <string>
 #include <vector>
 #include <thread>
 #include <fstream>
 #include <ctime>
 #include <boost/asio.hpp>
+#include <utility>
 #include "ppm.h"
 #include <cstring>
 #include <cstdlib>
 
-#define MAX_LENGTH  2048
+#define MAX_LENGTH  2764855
 
-using boost::asio::ip::udp;
 using boost::asio::ip::tcp;
 
 void processThread(int part);
 void processNet();
+
 
 //Split "mem" into "parts", e.g. if mem = 10 and parts = 4 you will have: 0,2,4,6,10
 //if possible the function will split mem into equal chuncks, if not
@@ -240,7 +242,7 @@ int main() {
 	std::cin.get();
 	return 0;
 }
-
+//process all threads
 void processThread(int part)
 {
 	std::string fname = std::string("hd2.ppm");
@@ -284,42 +286,197 @@ void processThread(int part)
 		tst(image, image2, bnd[0], bnd[1]);
 		time(&end);
 		std::cout << difftime(end, start) << " seconds" << std::endl;
+		//Save the result
 		image2.write("test.ppm");
 	}
-
-
-
-	//Save the result
 }
-
+//process allocated chunk of data
 void server(boost::asio::io_service& io_service, unsigned short port)
 {
-	udp::socket sock(io_service, udp::endpoint(udp::v4(), port));
-	tcp::acceptor acceptor(io_service, tcp::v4(), port);
-	std::string str("");
-	for (;;)
+	tcp::resolver resolver(io_service);
+	tcp::acceptor acceptor(io_service, tcp::endpoint(tcp::v4(), port));
+	tcp::acceptor acceptor2(io_service, tcp::endpoint(tcp::v4(), port+1));
+	for ( ;  ;)
 	{
-		boost::system::error_code error;
 		tcp::socket socket(io_service);
+		tcp::socket socket2(io_service);
+		boost::system::error_code errcode;
+		boost::asio::streambuf recv_streambuffer;
+		boost::asio::streambuf send_streambuffer;
+		std::istream istream(&recv_streambuffer);
+		std::ostream ostream(&send_streambuffer);
+		std::ofstream view("view.ppm", std::ios::out | std::ios::binary);
+		std::stringstream sst;
 		acceptor.accept(socket);
-		char data[MAX_LENGTH];
-		udp::endpoint sender_endpoint;
-		size_t length = sock.receive_from(boost::asio::buffer(data, MAX_LENGTH), sender_endpoint);
-		std::cout << "data received \n";
-		str+=data;
-		ppm image(str, false);
-		image.write("test.ppm");
+
+		while (boost::asio::read(socket, recv_streambuffer, boost::asio::transfer_at_least(1), errcode))
+		{
+			sst << &recv_streambuffer;
+		}
+		if (errcode == boost::asio::error::eof)
+			std::cout << "end of file\n";
+		else if (errcode)
+			std::cerr << "Error";
+		std::cout << "Data received" << std::endl;
+		ppm image(sst.str(), false);
 		ppm image2(image.width, image.height);
 		tst(image, image2, 0, image.size);
-		image2.getString(str);
-		image2.write("test2.ppm");
-		const char *data2 = str.c_str();
-		sock.send_to(boost::asio::buffer(str), sender_endpoint,0 , error);
-		std::cout << "data sent \n";
+		//image.write("testTCPServer.ppm");
+		ostream << image2.getString();
+		std::cout << "process finished" << std::endl;
+		acceptor2.accept(socket2);
+		boost::asio::write(socket2, send_streambuffer);
+		std::cout << "Data sent" << std::endl;
+	}
+
+}
+//client side operations
+//split data between servers
+void client(boost::asio::io_service& io_service, unsigned short port)
+{
+	int servNum(0);
+	int bckWidth(0);
+	int bckHeight(0);
+	std::string servName;
+	std::vector<std::string> servers;
+	std::cout << "Number of server : ";
+	std::cin >> servNum;
+	for (size_t i = 0; i < servNum; i++)
+	{
+		std::cout << "Enter server " << i + 1 << " ip adress: ";
+		std::cin >> servName;
+		servers.push_back(servName);
+	}
+	std::vector<std::string> data;
+	std::string fname = std::string("hd.ppm");
+	ppm image(fname);
+	std::ifstream inp(fname.c_str(), std::ios::in | std::ios::binary);
+	if (inp.is_open())
+	{
+		std::string line;
+		std::getline(inp, line);
+		if (line != "P6") {
+			std::cout << "Error. Unrecognized file format." << std::endl;
+			return;
+		}
+		std::getline(inp, line);
+		while (line[0] == '#') {
+			std::getline(inp, line);
+		}
+		std::stringstream dimensions(line);
+		int width(0);
+		int height(0);
+		int width_rest(0);
+		int height_rest(0);
+
+		try {
+			dimensions >> width;
+			dimensions >> height;
+			bckWidth = width;
+			bckHeight = height;
+			width_rest = width % servNum;
+			width /= servNum;
+			height_rest = height % servNum;
+			height /= servNum;
+		}
+		catch (std::exception &e) {
+			std::cout << "Header file format error. " << e.what() << std::endl;
+			return;
+		}
+
+		std::getline(inp, line);
+		std::stringstream max_val(line);
+		int max_col_val(0);
+		try {
+			max_val >> max_col_val;
+		}
+		catch (std::exception &e) {
+			std::cout << "Header file format error. " << e.what() << std::endl;
+			return;
+		}
+		for (size_t i = 0; i < servNum; i++)
+		{
+			std::stringstream ss;
+			int size(0);
+			if (i == servNum - 1)
+			{
+				width += width_rest;
+				height += height_rest;
+			}
+			size = width * height;
+			ss << "P6\n";
+			ss << width << " " << height << "\n";
+			ss << max_col_val << "\n";
+			char aux;
+			for (size_t j = 0; j < size; j++)
+			{
+				inp.read(&aux, 1);
+				ss.write(&aux, 1);
+				inp.read(&aux, 1);
+				ss.write(&aux, 1);
+				inp.read(&aux, 1);
+				ss.write(&aux, 1);
+			}
+			data.push_back(ss.str());
+		}
+	}
+
+	try
+	{
+		time_t start, end;
+		time(&start);
+		for (size_t i = 0; i < servers.size(); i++)
+		{
+			tcp::socket socket(io_service);
+			tcp::resolver resolver(io_service);
+			boost::system::error_code errcode;
+			boost::asio::connect(socket, resolver.resolve({ servers[i], "1335" }));
+			std::cout << "connected to server " << i << std::endl;
+			boost::asio::streambuf request;
+			std::ostream req_stream(&request);
+			req_stream << data[i];
+			//boost::asio::write(socket, boost::asio::buffer(data[0].c_str(), data[0].size()));
+			boost::asio::write(socket, request);
+			std::cout << "data sent to server " << i + 1 << std::endl;
+			socket.shutdown(boost::asio::socket_base::shutdown_both);
+			socket.close();
+		}
+		std::stringstream sst;
+		sst << "P6\n";
+		sst << image.width << " " << image.height << "\n";
+		sst << image.max_col_val << "\n";
+		for (size_t i = 0; i < servers.size(); i++)
+		{
+			tcp::socket socket(io_service);
+			tcp::resolver resolver(io_service);
+			boost::system::error_code errcode;
+			boost::asio::connect(socket, resolver.resolve({ servers[i], "1336" }));
+			boost::asio::streambuf response;
+			std::istream res_stream(&response);
+			//boost::asio::write(socket, boost::asio::buffer(data[0].c_str(), data[0].size()));
+			while (boost::asio::read(socket, response, boost::asio::transfer_at_least(1), errcode))
+			{
+				//view << &recv_streambuffer;
+				sst << &response;
+			}
+			std::cout << "data received from server " << i + 1 << std::endl;
+			socket.shutdown(boost::asio::socket_base::shutdown_both);
+			socket.close();
+		}
+		ppm image2(sst.str(), false);
+		time(&end);
+		std::cout << difftime(end, start) << " seconds" << std::endl;
+		image2.write("testTCPClient.ppm");
+		std::cout << "image processing finished"<< std::endl;
+	}
+	catch (const std::exception& e)
+	{
+		std::cerr << e.what() << std::endl;
+		std::cin.get();
 	}
 }
 
-
+//handling network process
 void processNet()
 {
 
@@ -329,148 +486,12 @@ void processNet()
 	if (choice == 0)
 	{
 		boost::asio::io_service io_service;
-
 		server(io_service, 1335);
 	}
 	else
 	{
 		boost::asio::io_service io_service;
-		//int const max_length(1258291);
-		udp::socket s(io_service, udp::endpoint(udp::v4(), 0));
-		std::vector<udp::endpoint> endpoints;
-		udp::resolver resolver(io_service);
-		int servNum(0);
-		int bckWidth(0);
-		int bckHeight(0);
-		std::string servName;
-		std::vector<std::string> servers;
-		std::cout << "Number of server : ";
-		std::cin >> servNum;
-		for (size_t i = 0; i < servNum; i++)
-		{
-			std::cout << "Enter server " << i + 1 << " ip adress: ";
-			std::cin >> servName;
-			servers.push_back(servName);
-		}
-		//udp::endpoint endpoint = *resolver.resolve({ udp::v4(), "localhost", "1335" });
-		std::vector<std::string> data;
-		std::string fname = std::string("hd.ppm");
-		ppm image(fname);
-		std::ifstream inp(fname.c_str(), std::ios::in | std::ios::binary);
-		if (inp.is_open()) {
-			std::string line;
-			std::getline(inp, line);
-			if (line != "P6") {
-				std::cout << "Error. Unrecognized file format." << std::endl;
-				return;
-			}
-			std::getline(inp, line);
-			while (line[0] == '#') {
-				std::getline(inp, line);
-			}
-			std::stringstream dimensions(line);
-			int width(0);
-			int height(0);
-			int width_rest(0);
-			int height_rest(0);
+		client(io_service, 1335);
 
-			try {
-				dimensions >> width;
-				dimensions >> height;
-				bckWidth = width;
-				bckHeight = height;
-				width_rest = width % servNum;
-				width /= servNum;
-				height_rest = height % servNum;
-				height /= servNum;
-			}
-			catch (std::exception &e) {
-				std::cout << "Header file format error. " << e.what() << std::endl;
-				return;
-			}
-
-			std::getline(inp, line);
-			std::stringstream max_val(line);
-			int max_col_val(0);
-			try {
-				max_val >> max_col_val;
-			}
-			catch (std::exception &e) {
-				std::cout << "Header file format error. " << e.what() << std::endl;
-				return;
-			}
-			for (size_t i = 0; i < servNum; i++)
-			{
-				std::stringstream ss;
-				int size(0);
-				if (i == servNum-1)
-				{
-					width += width_rest;
-					height += height_rest;
-				}
-				size = width * height;
-				ss << "P6\n";
-				ss << width << " " << height << "\n";
-				ss << max_col_val << "\n";
-				char aux;
-				for (size_t j = 0; j < size; j++)
-				{
-					inp.read(&aux, 1);
-					ss.write(&aux, 1);
-				}
-				data.push_back(ss.str());
-			}
-		}
-		//std::cout << "Enter message: ";
-		//char request[max_length];
-		//std::cin.ignore();
-		//std::cin.getline(request, max_length);
-		try
-		{
-			for (size_t i = 0; i < servNum; i++)
-			{
-				const char* request = data[i].c_str();
-				size_t request_length = std::strlen(request);
-				udp::endpoint endpoint = *resolver.resolve({ udp::v4(), servers[i], "1335" });
-				endpoints.push_back(endpoint);
-				s.send_to(boost::asio::buffer(data[i]), endpoints[i]);
-			}
-		}
-		catch (const std::exception& e)
-		{
-			std::cout << "Network error. " << e.what() << std::endl;
-			return;
-		}
-		std::vector<std::string> replies;
-		std::vector<udp::endpoint> sender_endpoints;
-		std::stringstream sz;
-		sz << "P6\n" << bckWidth << " " << bckHeight << "\n" << bckWidth*bckHeight << "\n";
-		std::string str = sz.str();
-		replies.push_back(str);
-		char reply[MAX_LENGTH];
-		udp::endpoint sender_endpoint;
-		for (size_t i = 0; i < servNum; i++)
-		{
-			size_t reply_length = s.receive_from(boost::asio::buffer(reply, MAX_LENGTH), sender_endpoint);
-			endpoints.push_back(sender_endpoint);
-			std::cout<<"received from : "<< sender_endpoint.address() <<"\n";
-			replies.push_back(std::string(reply));
-			std::stringstream sst(replies[i + 1]);
-			for (size_t j = 0; j < 3; j++)
-			{
-				sst.ignore();
-			}
-			replies[i + 1] = sst.str();
-		}
-		std::stringstream sst;
-		for (size_t i = 0; i <= servNum; i++)
-		{
-			sst << replies[i];
-		}
-		ppm imageOut(sst.str(), false);
-		imageOut.write("output.ppm");
 	}
-
-
-
 }
